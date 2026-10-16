@@ -1,6 +1,7 @@
 #import "NXWWifiWizard.h"
 #import <SystemConfiguration/CaptiveNetwork.h>
 #import <CoreLocation/CoreLocation.h>
+#import <NetworkExtension/NetworkExtension.h>
 
 @implementation NXWWifiWizard
 
@@ -89,37 +90,37 @@
                                 callbackId:command.callbackId];
 }
 
-- (void)getConnectedSSID:(CDVInvokedUrlCommand*)command {
-    CDVPluginResult *pluginResult = nil;
-    NSDictionary *r = [self fetchSSIDInfo];
-
-    NSString *ssid = [r objectForKey:(id)kCNNetworkInfoKeySSID]; //@"SSID"
-
-    if (ssid && [ssid length]) {
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:ssid];
+- (void)fetchCurrentNetworkValue:(NSString *)key completion:(void (^)(NSString *value))completion {
+    if (@available(iOS 14.0, *)) {
+        [NEHotspotNetwork fetchCurrentWithCompletionHandler:^(NEHotspotNetwork * _Nullable network) {
+            NSString *value = [key isEqualToString:(NSString *)kCNNetworkInfoKeyBSSID] ? network.BSSID : network.SSID;
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(value); });
+        }];
     } else {
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Not available"];
+        completion([[self fetchSSIDInfo] objectForKey:key]);
     }
+}
 
-    [self.commandDelegate sendPluginResult:pluginResult
-                                callbackId:command.callbackId];
+- (void)sendNetworkValue:(NSString *)key forCommand:(CDVInvokedUrlCommand*)command {
+    [self fetchCurrentNetworkValue:key completion:^(NSString *value) {
+        CDVPluginResult *pluginResult;
+        if (value && [value length]) {
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:value];
+        } else {
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Not available"];
+        }
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    }];
+}
+
+- (void)getConnectedSSID:(CDVInvokedUrlCommand*)command {
+    [self sendNetworkValue:(NSString *)kCNNetworkInfoKeySSID forCommand:command];
 }
 
 - (void)getConnectedBSSID:(CDVInvokedUrlCommand*)command {
-    CDVPluginResult *pluginResult = nil;
-    NSDictionary *r = [self fetchSSIDInfo];
-    
-    NSString *bssid = [r objectForKey:(id)kCNNetworkInfoKeyBSSID]; //@"SSID"
-    
-    if (bssid && [bssid length]) {
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:bssid];
-    } else {
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Not available"];
-    }
-    
-    [self.commandDelegate sendPluginResult:pluginResult
-                                callbackId:command.callbackId];
+    [self sendNetworkValue:(NSString *)kCNNetworkInfoKeyBSSID forCommand:command];
 }
+
 - (void)isWifiEnabled:(CDVInvokedUrlCommand*)command {
     
 }
